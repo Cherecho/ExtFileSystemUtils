@@ -14,7 +14,6 @@ static int language = 0;
 
 /* 
    Function Prototypes 
-   (Only the ones we need so far)
 */
 int ParseCommand(char *input_command, char *command, char *arg1, char *arg2);
 void WriteDataBlocks(EXT_DATOS *data_blocks, FILE *partition_file);
@@ -71,22 +70,43 @@ int main() {
             continue;
         }
 
+        /* Handle the 'info' command */
+        if (strcmp(command, "info") == 0) {
+            if (language == 0) {
+                /* English */
+                printf("Block %u Bytes\n", superblock.s_block_size);
+                printf("Inodes in partition = %u\n", superblock.s_inodes_count);
+                printf("Free inodes = %u\n", superblock.s_free_inodes_count);
+                printf("Blocks in partition = %u\n", superblock.s_blocks_count);
+                printf("Free blocks = %u\n", superblock.s_free_blocks_count);
+                printf("First data block = %u\n", superblock.s_first_data_block);
+            } else {
+                /* Spanish */
+                printf("Bloque %u Bytes\n", superblock.s_block_size);
+                printf("Inodos de la particion = %u\n", superblock.s_inodes_count);
+                printf("Inodos libres = %u\n", superblock.s_free_inodes_count);
+                printf("Bloques de la particion = %u\n", superblock.s_blocks_count);
+                printf("Bloques libres = %u\n", superblock.s_free_blocks_count);
+                printf("Primer bloque de datos = %u\n", superblock.s_first_data_block);
+            }
+            continue;
+        }
         /* Handle the 'salir' or 'exit' command */
         if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
             WriteDataBlocks(data_blocks, partition_file);
             fclose(partition_file);
             if (language == 0) {
-            printf("Exiting...\n");
+                printf("Exiting...\n");
             } else {
-            printf("Saliendo...\n");
+                printf("Saliendo...\n");
             }
             return 0;
         }
         /* Handle unknown commands */
         else {
             if (language == 0) {
-            printf("ERROR: Unknown command.\n");
+                printf("ERROR: Unknown command.\n");
             } else {
                 printf("ERROR: Comando desconocido.\n");
             }
