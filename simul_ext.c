@@ -6,17 +6,45 @@
 
 #define COMMAND_LENGTH 100
 
+
 /* 
    Global variable to control the language (0 -> English, 1 -> Spanish).
    Default: 0 (English).
 */
 static int language = 0;
 
-/* 
-   Function Prototypes 
-*/
+/* Function Prototypes */
 int ParseCommand(char *input_command, char *command, char *arg1, char *arg2);
 void WriteDataBlocks(EXT_DATOS *data_blocks, FILE *partition_file);
+
+
+void PrintByteMaps(EXT_BYTE_MAPS *byte_maps) {
+    int i;
+    
+    if (language == 0) {
+        /* English */
+        printf("Inodes   : ");
+        for (i = 0; i < MAX_INODOS; i++) {
+            printf("%d ", byte_maps->bmap_inodos[i]);
+        }
+        printf("\nBlocks [0-25]: ");
+        for (i = 0; i < 25 && i < MAX_BLOQUES_PARTICION; i++) {
+            printf("%d ", byte_maps->bmap_bloques[i]);
+        }
+        printf("\n");
+    } else {
+        /* Spanish */
+        printf("Inodos   : ");
+        for (i = 0; i < MAX_INODOS; i++) {
+            printf("%d ", byte_maps->bmap_inodos[i]);
+        }
+        printf("\nBloques [0-25]: ");
+        for (i = 0; i < 25 && i < MAX_BLOQUES_PARTICION; i++) {
+            printf("%d ", byte_maps->bmap_bloques[i]);
+        }
+        printf("\n");
+    }
+}
 
 int main() {
     char input_command[COMMAND_LENGTH];
@@ -70,7 +98,6 @@ int main() {
             continue;
         }
 
-        /* Handle the 'info' command */
         if (strcmp(command, "info") == 0) {
             if (language == 0) {
                 /* English */
@@ -90,8 +117,9 @@ int main() {
                 printf("Primer bloque de datos = %u\n", superblock.s_first_data_block);
             }
             continue;
-        }
-        /* Handle the 'salir' or 'exit' command */
+        } else if (strcmp(command, "bytemaps") == 0) {
+            PrintByteMaps(&byte_maps);
+            continue;
         if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
             WriteDataBlocks(data_blocks, partition_file);
@@ -102,9 +130,7 @@ int main() {
                 printf("Saliendo...\n");
             }
             return 0;
-        }
-        /* Handle unknown commands */
-        else {
+        } else {
             if (language == 0) {
                 printf("ERROR: Unknown command.\n");
             } else {
