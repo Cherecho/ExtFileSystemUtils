@@ -17,6 +17,65 @@ static int language = 0;
 int ParseCommand(char *input_command, char *command, char *arg1, char *arg2);
 void WriteDataBlocks(EXT_DATOS *data_blocks, FILE *partition_file);
 void PrintByteMaps(EXT_BYTE_MAPS *byte_maps);
+void ListDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes);
+int SearchFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *filename);
+int RenameFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *old_name, char *new_name);
+void WriteInodesAndDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, FILE *partition_file);
+
+
+int SearchFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *filename) {
+    int i;
+    for (i = 0; i < MAX_FICHEROS; i++) {
+        if (directory[i].dir_inodo != NULL_INODO) {
+            if (strcmp(directory[i].dir_nfich, filename) == 0) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+int RenameFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *old_name, char *new_name) {
+    int source_idx = SearchFile(directory, inodes, old_name);
+    if (source_idx < 0) {
+        if (language == 0)
+            printf("ERROR: File %s not found\n", old_name);
+        else
+            printf("ERROR: Fichero %s no encontrado\n", old_name);
+        return -1;
+    }
+    /* Check if the new name already exists */
+    int dest_idx = SearchFile(directory, inodes, new_name);
+    if (dest_idx >= 0) {
+        if (language == 0)
+            printf("ERROR: File %s already exists\n", new_name);
+        else
+            printf("ERROR: El fichero %s ya existe\n", new_name);
+        return -1;
+    }
+    /* Proceed with renaming */
+    strncpy(directory[source_idx].dir_nfich, new_name, LEN_NFICH - 1);
+    directory[source_idx].dir_nfich[LEN_NFICH - 1] = '\0';  // Ensure null-termination
+
+    if (language == 0) {
+        printf("File renamed successfully.\n");
+    } else {
+        printf("Fichero renombrado exitosamente.\n");
+    }
+    
+    return 0;
+}
+
+void WriteInodesAndDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, FILE *partition_file) {
+    /* Move to inode block (block 2) */
+    fseek(partition_file, SIZE_BLOQUE * 2, SEEK_SET);
+    fwrite(inodes, SIZE_BLOQUE, 1, partition_file);
+
+    /* Move to directory block (block 3) */
+    fseek(partition_file, SIZE_BLOQUE * 3, SEEK_SET);
+    fwrite(directory, SIZE_BLOQUE, 1, partition_file);
+    fflush(partition_file);
+}
 
 void ListDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes) {
     int i;
@@ -132,6 +191,21 @@ int main() {
             continue;
         } else if (strcmp(command, "dir") == 0) {
             ListDirectory(directory, &inodes);
+            continue;
+        } else if (strcmp(command, "rename") == 0) {
+            /* Check if both old and new names are provided */
+            if (strlen(arg1) == 0 || strlen(arg2) == 0) {
+                if (language == 0) {
+                    printf("ERROR: Missing arguments. Usage: rename <old> <new>\n");
+                } else {
+                    printf("ERROR: Faltan argumentos. Uso: rename <viejo> <nuevo>\n");
+                }
+                continue;
+            }
+            if (RenameFile(directory, &inodes, arg1, arg2) == 0) {
+                /* Successful rename: write changes to disk */
+                WriteInodesAndDirectory(directory, &inodes, partition_file);
+            }
             continue;
         } else if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
