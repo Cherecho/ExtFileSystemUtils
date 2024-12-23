@@ -16,31 +16,43 @@ static int language = 0;
 /* Function Prototypes */
 int ParseCommand(char *input_command, char *command, char *arg1, char *arg2);
 void WriteDataBlocks(EXT_DATOS *data_blocks, FILE *partition_file);
+void PrintByteMaps(EXT_BYTE_MAPS *byte_maps);
 
-
-void PrintByteMaps(EXT_BYTE_MAPS *byte_maps) {
+void ListDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes) {
     int i;
     
-    if (language == 0) {
-        /* English */
-        printf("Inodes   : ");
-        for (i = 0; i < MAX_INODOS; i++) {
-            printf("%d ", byte_maps->bmap_inodos[i]);
+    for (i = 0; i < MAX_FICHEROS; i++) {
+        unsigned short inode_idx = directory[i].dir_inodo;
+        /* Skip empty entries */
+        if (inode_idx == NULL_INODO) {
+            continue;
         }
-        printf("\nBlocks [0-25]: ");
-        for (i = 0; i < 25 && i < MAX_BLOQUES_PARTICION; i++) {
-            printf("%d ", byte_maps->bmap_bloques[i]);
+        /* Skip the root entry '.' */
+        if (strcmp(directory[i].dir_nfich, ".") == 0) {
+            continue;
         }
-        printf("\n");
-    } else {
-        /* Spanish */
-        printf("Inodos   : ");
-        for (i = 0; i < MAX_INODOS; i++) {
-            printf("%d ", byte_maps->bmap_inodos[i]);
+        /* Retrieve inode information */
+        EXT_SIMPLE_INODE *inode = &inodes->blq_inodos[inode_idx];
+        if (language == 0) {
+            /* English */
+            printf("%s\tsize: %u\tinode: %d\tblocks: ", 
+                   directory[i].dir_nfich, 
+                   inode->size_fichero, 
+                   inode_idx);
+        } else {
+            /* Spanish */
+            printf("%s\ttamaño: %u\tinodo: %d\tbloques: ", 
+                   directory[i].dir_nfich, 
+                   inode->size_fichero, 
+                   inode_idx);
         }
-        printf("\nBloques [0-25]: ");
-        for (i = 0; i < 25 && i < MAX_BLOQUES_PARTICION; i++) {
-            printf("%d ", byte_maps->bmap_bloques[i]);
+        
+        int j;
+        for (j = 0; j < MAX_NUMS_BLOQUE_INODO; j++) {
+            if (inode->i_nbloque[j] == NULL_BLOQUE) {
+                break;
+            }
+            printf("%d ", inode->i_nbloque[j]);
         }
         printf("\n");
     }
@@ -100,7 +112,6 @@ int main() {
 
         if (strcmp(command, "info") == 0) {
             if (language == 0) {
-                /* English */
                 printf("Block %u Bytes\n", superblock.s_block_size);
                 printf("Inodes in partition = %u\n", superblock.s_inodes_count);
                 printf("Free inodes = %u\n", superblock.s_free_inodes_count);
@@ -108,7 +119,6 @@ int main() {
                 printf("Free blocks = %u\n", superblock.s_free_blocks_count);
                 printf("First data block = %u\n", superblock.s_first_data_block);
             } else {
-                /* Spanish */
                 printf("Bloque %u Bytes\n", superblock.s_block_size);
                 printf("Inodos de la particion = %u\n", superblock.s_inodes_count);
                 printf("Inodos libres = %u\n", superblock.s_free_inodes_count);
@@ -120,7 +130,10 @@ int main() {
         } else if (strcmp(command, "bytemaps") == 0) {
             PrintByteMaps(&byte_maps);
             continue;
-        if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
+        } else if (strcmp(command, "dir") == 0) {
+            ListDirectory(directory, &inodes);
+            continue;
+        } else if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
             WriteDataBlocks(data_blocks, partition_file);
             fclose(partition_file);
@@ -183,6 +196,37 @@ int ParseCommand(char *input_command, char *command, char *arg1, char *arg2) {
 }
 
 /* 
+ * Function: PrintByteMaps
+ * -----------------------
+ * Displays the inode and block byte maps.
+ */
+void PrintByteMaps(EXT_BYTE_MAPS *byte_maps) {
+    int i;
+    
+    if (language == 0) {
+        printf("Inodes   : ");
+        for (i = 0; i < MAX_INODOS; i++) {
+            printf("%d ", byte_maps->bmap_inodos[i]);
+        }
+        printf("\nBlocks [0-25]: ");
+        for (i = 0; i < 25 && i < MAX_BLOQUES_PARTICION; i++) {
+            printf("%d ", byte_maps->bmap_bloques[i]);
+        }
+        printf("\n");
+    } else {
+        printf("Inodos   : ");
+        for (i = 0; i < MAX_INODOS; i++) {
+            printf("%d ", byte_maps->bmap_inodos[i]);
+        }
+        printf("\nBloques [0-25]: ");
+        for (i = 0; i < 25 && i < MAX_BLOQUES_PARTICION; i++) {
+            printf("%d ", byte_maps->bmap_bloques[i]);
+        }
+        printf("\n");
+    }
+}
+
+/* 
  * Function: WriteDataBlocks
  * -------------------------
  * Writes all data blocks back to the partition file.
@@ -193,3 +237,4 @@ void WriteDataBlocks(EXT_DATOS *data_blocks, FILE *partition_file) {
     fwrite(data_blocks, SIZE_BLOQUE, MAX_BLOQUES_DATOS, partition_file);
     fflush(partition_file);
 }
+
