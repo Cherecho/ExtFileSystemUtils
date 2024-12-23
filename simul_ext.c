@@ -24,7 +24,68 @@ void WriteInodesAndDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
 int DeleteFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
               EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
               char *filename, FILE *partition_file);
+int PrintFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, EXT_DATOS *data_blocks, char *filename);
 
+
+int PrintFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
+             EXT_DATOS *data_blocks, char *filename) {
+    int dir_idx = SearchFile(directory, inodes, filename);
+    if (dir_idx < 0) {
+        if (language == 0)
+            printf("ERROR: File %s not found\n", filename);
+        else
+            printf("ERROR: Fichero %s no encontrado\n", filename);
+        return -1;
+    }
+    unsigned short inode_idx = directory[dir_idx].dir_inodo;
+    EXT_SIMPLE_INODE *inode = &inodes->blq_inodos[inode_idx];
+    unsigned int file_size = inode->size_fichero;
+    
+    if (file_size == 0) {
+        if (language == 0)
+            printf("File is empty.\n");
+        else
+            printf("El fichero está vacío.\n");
+        return 0;
+    }
+    
+    unsigned char *buffer = (unsigned char *)malloc(file_size + 1);
+    if (buffer == NULL) {
+        if (language == 0)
+            printf("ERROR: Not enough memory.\n");
+        else
+            printf("ERROR: Memoria insuficiente.\n");
+        return -1;
+    }
+    memset(buffer, 0, file_size + 1);
+    
+    int offset = 0;
+    for (int i = 0; i < MAX_NUMS_BLOQUE_INODO; i++) {
+        if (inode->i_nbloque[i] == NULL_BLOQUE) {
+            break;
+        }
+        int block_num = inode->i_nbloque[i];
+        int data_block_idx = block_num - PRIM_BLOQUE_DATOS;
+        if (data_block_idx < 0 || data_block_idx >= MAX_BLOQUES_DATOS) {
+            continue;
+        }
+        int bytes_to_copy = file_size - offset;
+        if (bytes_to_copy > SIZE_BLOQUE) {
+            bytes_to_copy = SIZE_BLOQUE;
+        }
+        memcpy(buffer + offset, data_blocks[data_block_idx].dato, bytes_to_copy);
+        offset += bytes_to_copy;
+        if (offset >= file_size) {
+            break;
+        }
+    }
+    
+    buffer[file_size] = '\0';
+    printf("%s\n", buffer);
+    free(buffer);
+    
+    return 0;
+}
 
 int DeleteFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
               EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
@@ -276,6 +337,17 @@ int main() {
                            arg1, partition_file) == 0) {
                 /* Successfully removed */
             }
+            continue;
+        } else if (strcmp(command, "imprimir") == 0) {
+            if (strlen(arg1) == 0) {
+                if (language == 0) {
+                    printf("ERROR: Missing filename. Usage: imprimir <filename>\n");
+                } else {
+                    printf("ERROR: Falta el nombre del fichero. Uso: imprimir <fichero>\n");
+                }
+                continue;
+            }
+            PrintFile(directory, &inodes, data_blocks, arg1);
             continue;
         } else if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
