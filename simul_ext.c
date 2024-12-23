@@ -21,7 +21,63 @@ void ListDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes);
 int SearchFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *filename);
 int RenameFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *old_name, char *new_name);
 void WriteInodesAndDirectory(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, FILE *partition_file);
+int DeleteFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
+              EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
+              char *filename, FILE *partition_file);
 
+
+int DeleteFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
+              EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
+              char *filename, FILE *partition_file) {
+    int dir_idx = SearchFile(directory, inodes, filename);
+    if (dir_idx < 0) {
+        if (language == 0)
+            printf("ERROR: File %s not found\n", filename);
+        else
+            printf("ERROR: Fichero %s no encontrado\n", filename);
+        return -1;
+    }
+    unsigned short inode_idx = directory[dir_idx].dir_inodo;
+    EXT_SIMPLE_INODE *inode = &inodes->blq_inodos[inode_idx];
+    
+    /* Free the blocks in the byte map */
+    for (int i = 0; i < MAX_NUMS_BLOQUE_INODO; i++) {
+        if (inode->i_nbloque[i] == NULL_BLOQUE) {
+            break;
+        }
+        unsigned short block = inode->i_nbloque[i];
+        byte_maps->bmap_bloques[block] = 0;  // Mark block as free
+        superblock->s_free_blocks_count++;
+        inode->i_nbloque[i] = NULL_BLOQUE;
+    }
+    
+    /* Free the inode in the byte map */
+    byte_maps->bmap_inodos[inode_idx] = 0;  // Mark inode as free
+    superblock->s_free_inodes_count++;
+    
+    /* Reset the inode's file size */
+    inode->size_fichero = 0;
+    
+    /* Clear the directory entry */
+    memset(directory[dir_idx].dir_nfich, 0, LEN_NFICH);
+    directory[dir_idx].dir_inodo = NULL_INODO;
+    
+    /* Write the updated structures to disk */
+    WriteInodesAndDirectory(directory, inodes, partition_file);
+    fseek(partition_file, SIZE_BLOQUE * 1, SEEK_SET);
+    fwrite(byte_maps, SIZE_BLOQUE, 1, partition_file);
+    fseek(partition_file, SIZE_BLOQUE * 0, SEEK_SET);
+    fwrite(superblock, SIZE_BLOQUE, 1, partition_file);
+    fflush(partition_file);
+    
+    if (language == 0) {
+        printf("File %s removed successfully.\n", filename);
+    } else {
+        printf("Fichero %s eliminado exitosamente.\n", filename);
+    }
+    
+    return 0;
+}
 
 int SearchFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, char *filename) {
     int i;
@@ -205,6 +261,20 @@ int main() {
             if (RenameFile(directory, &inodes, arg1, arg2) == 0) {
                 /* Successful rename: write changes to disk */
                 WriteInodesAndDirectory(directory, &inodes, partition_file);
+            }
+            continue;
+        } else if (strcmp(command, "remove") == 0) {
+            if (strlen(arg1) == 0) {
+                if (language == 0) {
+                    printf("ERROR: Missing filename. Usage: remove <filename>\n");
+                } else {
+                    printf("ERROR: Falta el nombre del fichero. Uso: remove <fichero>\n");
+                }
+                continue;
+            }
+            if (DeleteFile(directory, &inodes, &byte_maps, &superblock,
+                           arg1, partition_file) == 0) {
+                /* Successfully removed */
             }
             continue;
         } else if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
