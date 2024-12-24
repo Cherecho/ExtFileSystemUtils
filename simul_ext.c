@@ -25,7 +25,146 @@ int DeleteFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
               EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
               char *filename, FILE *partition_file);
 int PrintFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes, EXT_DATOS *data_blocks, char *filename);
+int CopyFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
+             EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
+             EXT_DATOS *data_blocks, char *source, char *destination, FILE *partition_file);
 
+int CopyFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
+             EXT_BYTE_MAPS *byte_maps, EXT_SIMPLE_SUPERBLOCK *superblock,
+             EXT_DATOS *data_blocks, char *source, char *destination, FILE *partition_file) {
+    int source_idx = SearchFile(directory, inodes, source);
+    if (source_idx < 0) {
+        if (language == 0)
+            printf("ERROR: File %s not found\n", source);
+        else
+            printf("ERROR: Fichero %s no encontrado\n", source);
+        return -1;
+    }
+    int dest_idx = SearchFile(directory, inodes, destination);
+    if (dest_idx >= 0) {
+        if (language == 0)
+            printf("ERROR: File %s already exists\n", destination);
+        else
+            printf("ERROR: El fichero %s ya existe\n", destination);
+        return -1;
+    }
+    
+    /* Find the first free inode */
+    int free_inode = -1;
+    for (int i = 0; i < MAX_INODOS; i++) {
+        if (byte_maps->bmap_inodos[i] == 0) {
+            free_inode = i;
+            break;
+        }
+    }
+    if (free_inode < 0) {
+        if (language == 0)
+            printf("ERROR: No free inodes available\n");
+        else
+            printf("ERROR: No hay inodos libres disponibles\n");
+        return -1;
+    }
+    
+    /* Find the first free directory entry */
+    int free_dir = -1;
+    for (int i = 0; i < MAX_FICHEROS; i++) {
+        if (directory[i].dir_inodo == NULL_INODO) {
+            free_dir = i;
+            break;
+        }
+    }
+    if (free_dir < 0) {
+        if (language == 0)
+            printf("ERROR: No free directory entries available\n");
+        else
+            printf("ERROR: No hay entradas libres en el directorio\n");
+        return -1;
+    }
+    
+    unsigned short source_inode_idx = directory[source_idx].dir_inodo;
+    EXT_SIMPLE_INODE *source_inode = &inodes->blq_inodos[source_inode_idx];
+    
+    EXT_SIMPLE_INODE *dest_inode = &inodes->blq_inodos[free_inode];
+    dest_inode->size_fichero = source_inode->size_fichero;
+    for (int i = 0; i < MAX_NUMS_BLOQUE_INODO; i++) {
+        dest_inode->i_nbloque[i] = NULL_BLOQUE;
+    }
+    
+    byte_maps->bmap_inodos[free_inode] = 1;
+    superblock->s_free_inodes_count--;
+    
+    unsigned int file_size = source_inode->size_fichero;
+    int offset = 0;
+    int block_index = 0;
+    
+    while (block_index < MAX_NUMS_BLOQUE_INODO && source_inode->i_nbloque[block_index] != NULL_BLOQUE) {
+        int source_block_num = source_inode->i_nbloque[block_index];
+        
+        /* Find the first free block */
+        int free_block = -1;
+        for (int b = 0; b < MAX_BLOQUES_PARTICION; b++) {
+            if (byte_maps->bmap_bloques[b] == 0) {
+                free_block = b;
+                break;
+            }
+        }
+        if (free_block < 0) {
+            if (language == 0)
+                printf("ERROR: No free blocks available\n");
+            else
+                printf("ERROR: No hay bloques libres disponibles\n");
+            return -1;
+        }
+        byte_maps->bmap_bloques[free_block] = 1;
+        superblock->s_free_blocks_count--;
+        
+        dest_inode->i_nbloque[block_index] = free_block;
+        
+        int source_data_idx = source_block_num - PRIM_BLOQUE_DATOS;
+        int dest_data_idx = free_block - PRIM_BLOQUE_DATOS;
+        
+        if (source_data_idx >= 0 && source_data_idx < MAX_BLOQUES_DATOS &&
+            dest_data_idx >= 0 && dest_data_idx < MAX_BLOQUES_DATOS) 
+        {
+            memcpy(data_blocks[dest_data_idx].dato, data_blocks[source_data_idx].dato, SIZE_BLOQUE);
+        }
+        
+        offset += SIZE_BLOQUE;
+        if (offset >= file_size) {
+            break;
+        }
+        block_index++;
+    }
+    
+    strncpy(directory[free_dir].dir_nfich, destination, LEN_NFICH - 1);
+    directory[free_dir].dir_nfich[LEN_NFICH - 1] = '\0';
+    directory[free_dir].dir_inodo = free_inode;
+    
+    /* Write the updated structures to disk */
+    /* Write inodes & dir */
+    fseek(partition_file, SIZE_BLOQUE * 2, SEEK_SET);
+    fwrite(inodes, SIZE_BLOQUE, 1, partition_file);
+    fseek(partition_file, SIZE_BLOQUE * 3, SEEK_SET);
+    fwrite(directory, SIZE_BLOQUE, 1, partition_file);
+    /* Write byte maps */
+    fseek(partition_file, SIZE_BLOQUE * 1, SEEK_SET);
+    fwrite(byte_maps, SIZE_BLOQUE, 1, partition_file);
+    /* Write superblock */
+    fseek(partition_file, SIZE_BLOQUE * 0, SEEK_SET);
+    fwrite(superblock, SIZE_BLOQUE, 1, partition_file);
+    /* Write data blocks */
+    fseek(partition_file, SIZE_BLOQUE * 4, SEEK_SET);
+    fwrite(data_blocks, SIZE_BLOQUE, MAX_BLOQUES_DATOS, partition_file);
+    fflush(partition_file);
+    
+    if (language == 0) {
+        printf("File copied successfully.\n");
+    } else {
+        printf("Fichero copiado exitosamente.\n");
+    }
+    
+    return 0;
+}
 
 int PrintFile(EXT_ENTRADA_DIR *directory, EXT_BLQ_INODOS *inodes,
              EXT_DATOS *data_blocks, char *filename) {
@@ -348,6 +487,19 @@ int main() {
                 continue;
             }
             PrintFile(directory, &inodes, data_blocks, arg1);
+            continue;
+        } else if (strcmp(command, "copy") == 0) {
+            if (strlen(arg1) == 0 || strlen(arg2) == 0) {
+                if (language == 0) {
+                    printf("ERROR: Missing arguments. Usage: copy <source> <destination>\n");
+                } else {
+                    printf("ERROR: Faltan argumentos. Uso: copy <origen> <destino>\n");
+                }
+                continue;
+            }
+            if (CopyFile(directory, &inodes, &byte_maps, &superblock,
+                         data_blocks, arg1, arg2, partition_file) == 0) {
+            }
             continue;
         } else if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
