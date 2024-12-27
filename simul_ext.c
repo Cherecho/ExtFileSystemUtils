@@ -157,6 +157,18 @@ int main() {
                          data_blocks, arg1, arg2, partition_file) == 0) {
             }
             continue;
+        } else if (strcmp(command, "language") == 0) {
+            /* language [en|es] */
+            if (strcmp(arg1, "es") == 0) {
+                language = 1;
+                printf("Language set to Spanish.\n");
+            } else if (strcmp(arg1, "en") == 0 || strlen(arg1) == 0) {
+                language = 0;
+                printf("Language set to English.\n");
+            } else {
+                printf("Unknown language. Use 'language es' or 'language en'.\n");
+            }
+            continue;
         } else if (strcmp(command, "salir") == 0 || strcmp(command, "exit") == 0) {
             /* Before exiting, write all data blocks to disk */
             WriteDataBlocks(data_blocks, partition_file);
