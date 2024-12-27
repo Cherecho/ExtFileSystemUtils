@@ -26,7 +26,7 @@ To run the program, ensure you have:
 1. Clone the repository or download the source files.
 2. Compile the program using GCC:
    ```bash
-   gcc -o ExtFileSystemUtils main.c
+   gcc -o ExtFileSystemUtils simul_ext.c
 
 ## Usage
 
